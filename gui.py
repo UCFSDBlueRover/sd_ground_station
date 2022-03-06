@@ -3,7 +3,6 @@ from pyqtlet import L, MapWidget
 from math import cos, asin, sqrt, pi
 from datetime import datetime
 import os
-import re
 import time
 import threading
 import queue
@@ -13,14 +12,19 @@ import serial.tools.list_ports
 class Window(QtWidgets.QWidget):
     def __init__(self):
         super().__init__()
-        # Read and Write threads
-        self.readThread = threading.Thread()
+        # Connection and Write threads
+        self.connectionThread = threading.Thread()
         self.writeThread = threading.Thread()
-        self.writeQueue = queue.Queue()
-        self.readState = 1 # read thread state
+        self.writeBuf = queue.Queue() # write buffer
+        self.commandBuf = queue.Queue() # command buffer
+        self.connectionState = 'CLOSED'
+        self.readState = 0
+        self.closeFlag = 0
+        self.seqNum = 0
+        self.ackNum = 0
         self.loraCommands = ['AT\r\n', 'AT+VER?\r\n', 'AT+UID?\r\n', 'AT+BAND?\r\n', 'AT+NETWORKID?\r\n',
             'AT+ADDRESS?\r\n', 'AT+PARAMETER?\r\n', 'AT+IPR?\r\n']
-        self.message = ['NA','','NA','NA',''] # LoRa message structure
+        self.message = ['NA','NA','NA','NA','NA'] # LoRa message structure
         self.currentPort = ' ' 
         self.ports = [' '] # list of serial ports
         self.portsFullName = [' '] # verbose list of serial ports
@@ -47,7 +51,8 @@ class Window(QtWidgets.QWidget):
         self.setLayout(self.layout)
         tabs = QtWidgets.QTabWidget()
         tabs.addTab(self.CMTabUI(), 'Controls/Map')
-        tabs.addTab(self.SHTabUI(), 'Settings/Help')
+        tabs.addTab(self.CTabUI(), 'Communication')
+        tabs.addTab(self.STabUI(), 'Settings/Debug')
         self.layout.addWidget(tabs)
 
     def CMTabUI(self):
@@ -80,29 +85,10 @@ class Window(QtWidgets.QWidget):
         self.controlText.setText('Control Mode')
         self.controlText.setFont(self.font16)
         self.controlText.setAlignment(QtCore.Qt.AlignCenter)
-        self.sentText = QtWidgets.QLabel()
-        self.sentText.setText('Last Command Sent')
-        self.sentText.setFont(self.font16)
-        self.sentText.setAlignment(QtCore.Qt.AlignCenter)
         self.controlList = QtWidgets.QComboBox()
         self.controlList.addItems(['', 'Blind Drive', 'Manual'])
         self.controlList.activated.connect(self.switchControl)
         self.controlList.setDisabled(True)
-        self.sent = QtWidgets.QLabel()
-        self.sent.setText('NA')
-        self.sent.setAlignment(QtCore.Qt.AlignCenter)
-        self.address = QtWidgets.QLabel()
-        self.address.setText('Rover\'s Address: NA')
-        self.address.setFont(self.font14)
-        self.address.setAlignment(QtCore.Qt.AlignLeft)
-        self.data = QtWidgets.QLabel()
-        self.data.setText('Data: NA')
-        self.data.setFont(self.font14)
-        self.data.setAlignment(QtCore.Qt.AlignLeft)
-        self.signal = QtWidgets.QLabel()
-        self.signal.setText('Signal: NA')
-        self.signal.setFont(self.font14)
-        self.signal.setAlignment(QtCore.Qt.AlignLeft)
         self.forward = QtWidgets.QPushButton()
         self.forward.clicked.connect(lambda: self.buttonPressed('w'))
         self.forward.setAutoRepeat(True)
@@ -153,23 +139,10 @@ class Window(QtWidgets.QWidget):
         self.current.clicked.connect(lambda: self.panTo('c')) 
         self.toggle = QtWidgets.QPushButton('Toggle Map Style')
         self.toggle.clicked.connect(lambda: self.mapToggle()) 
-        self.batteryText = QtWidgets.QLabel()
-        self.batteryText.setText('Battery: 0 hrs')
-        self.batteryText.setFont(self.font14)
-        self.batteryText.setAlignment(QtCore.Qt.AlignLeft)
-        self.speedText = QtWidgets.QLabel()
-        self.speedText.setText('Speed: 0 km/h')
-        self.speedText.setFont(self.font14)
-        self.speedText.setAlignment(QtCore.Qt.AlignLeft)
         self.initLayout.addWidget(self.portText, 0, 0)
-        self.initLayout.addWidget(self.controlText, 0, 1)
-        self.initLayout.addWidget(self.sentText, 0, 2)
+        self.initLayout.addWidget(self.controlText, 0, 2)
         self.initLayout.addWidget(self.portList, 1, 0)
-        self.initLayout.addWidget(self.controlList, 1, 1)
-        self.initLayout.addWidget(self.sent, 1, 2)
-        self.initLayout.addWidget(self.address, 2, 0)
-        self.initLayout.addWidget(self.data, 2, 1)
-        self.initLayout.addWidget(self.signal, 2, 2)
+        self.initLayout.addWidget(self.controlList, 1, 2)
         self.manualLayout.addWidget(self.forward, 0, 1)
         self.manualLayout.addWidget(self.left, 1, 0)
         self.manualLayout.addWidget(self.right, 1, 2)
@@ -177,14 +150,12 @@ class Window(QtWidgets.QWidget):
         self.blindDriveLayout.addWidget(self.destLat, 0, 0)
         self.blindDriveLayout.addWidget(self.destLong, 0, 1)
         self.blindDriveLayout.addWidget(self.travel, 0, 2)
-        self.telemetryLayout.addWidget(self.latText, 1, 0)
-        self.telemetryLayout.addWidget(self.longText, 1, 1)
-        self.telemetryLayout.addWidget(self.batteryText, 0, 0)
-        self.telemetryLayout.addWidget(self.speedText, 0, 1)
+        self.telemetryLayout.addWidget(self.latText, 0, 0)
+        self.telemetryLayout.addWidget(self.longText, 0, 1)
         self.telemetryLayout.addWidget(self.distanceText, 0, 2)
-        self.telemetryLayout.addWidget(self.starting, 2, 0)
-        self.telemetryLayout.addWidget(self.current, 2, 1)
-        self.telemetryLayout.addWidget(self.toggle, 2, 2)
+        self.telemetryLayout.addWidget(self.starting, 1, 0)
+        self.telemetryLayout.addWidget(self.current, 1, 1)
+        self.telemetryLayout.addWidget(self.toggle, 1, 2)
         self.mapLayout = QtWidgets.QVBoxLayout()
         self.mapWidget = MapWidget()
         self.map = L.map(self.mapWidget) 
@@ -228,7 +199,87 @@ class Window(QtWidgets.QWidget):
         CMTab.setLayout(layout)
         return CMTab
 
-    def SHTabUI(self):
+    def CTabUI(self):
+        CTab = QtWidgets.QWidget()
+        layout = QtWidgets.QVBoxLayout()
+        layout.setSpacing(5)
+        self.communicationLayout = QtWidgets.QGridLayout()
+        self.communicationLayout.setVerticalSpacing(20)
+        self.communicationLayout.setHorizontalSpacing(10)
+        self.connStatusText = QtWidgets.QLabel()
+        self.connStatusText.setText('Connection Status: ')
+        self.connStatusText.setFont(self.font16)
+        self.connStatusText.setAlignment(QtCore.Qt.AlignLeft)
+        self.connStatus = QtWidgets.QLabel()
+        self.connStatus.setText('CLOSED')
+        self.connStatus.setStyleSheet("color: red")
+        self.connStatus.setFont(self.font16)
+        self.connStatus.setAlignment(QtCore.Qt.AlignLeft)
+        self.address = QtWidgets.QLabel()
+        self.address.setText('Rover\'s Address: NA')
+        self.address.setFont(self.font16)
+        self.address.setAlignment(QtCore.Qt.AlignLeft)
+        self.rssi = QtWidgets.QLabel()
+        self.rssi.setText('RSSI: NA')
+        self.rssi.setFont(self.font16)
+        self.rssi.setAlignment(QtCore.Qt.AlignLeft)
+        self.snr = QtWidgets.QLabel()
+        self.snr.setText('SNR: NA')
+        self.snr.setFont(self.font16)
+        self.snr.setAlignment(QtCore.Qt.AlignLeft)
+        self.sentText = QtWidgets.QLabel()
+        self.sentText.setText('Sent Data:')
+        self.sentText.setFont(self.font16)
+        self.sentText.setAlignment(QtCore.Qt.AlignLeft)
+        self.sent = QtWidgets.QLabel()
+        self.sent.setText('NA')
+        self.sent.setFont(self.font14)
+        self.sent.setAlignment(QtCore.Qt.AlignLeft)
+        self.sent.setWordWrap(True)
+        self.receivedText = QtWidgets.QLabel()
+        self.receivedText.setText('Received Data:')
+        self.receivedText.setFont(self.font16)
+        self.receivedText.setAlignment(QtCore.Qt.AlignLeft)
+        self.received = QtWidgets.QLabel()
+        self.received.setText('NA')
+        self.received.setFont(self.font14)
+        self.received.setAlignment(QtCore.Qt.AlignLeft)
+        self.received.setWordWrap(True)
+        self.sentBar = QtWidgets.QProgressBar(self)
+        self.sentBar.setAlignment(QtCore.Qt.AlignLeft)
+        self.receivedBar = QtWidgets.QProgressBar(self)
+        self.receivedBar.setAlignment(QtCore.Qt.AlignLeft)
+        self.sentStatus = QtWidgets.QLabel()
+        self.sentStatus.setText('NA')
+        self.sentStatus.setFont(self.font14)
+        self.sentStatus.setAlignment(QtCore.Qt.AlignLeft)
+        self.receivedStatus = QtWidgets.QLabel()
+        self.receivedStatus.setText('NA')
+        self.receivedStatus.setFont(self.font14)
+        self.receivedStatus.setAlignment(QtCore.Qt.AlignLeft)
+        self.closeConnection = QtWidgets.QPushButton('Close Connection')
+        self.closeConnection.clicked.connect(lambda: self.close()) 
+        self.closeConnection.setDisabled(True)
+        self.communicationLayout.addWidget(self.address, 0, 0)
+        self.communicationLayout.addWidget(self.rssi, 0, 1)
+        self.communicationLayout.addWidget(self.snr, 0, 2)
+        self.communicationLayout.addWidget(self.connStatusText, 1, 0)
+        self.communicationLayout.addWidget(self.connStatus, 1, 1, 1, 2)
+        self.communicationLayout.addWidget(self.sentText, 2, 0)
+        self.communicationLayout.addWidget(self.sent, 2, 1, 1, 2)
+        self.communicationLayout.addWidget(self.sentBar, 3, 0, 1, 2)
+        self.communicationLayout.addWidget(self.sentStatus, 3, 2)
+        self.communicationLayout.addWidget(self.receivedText, 4, 0)
+        self.communicationLayout.addWidget(self.received, 4, 1, 1, 2)
+        self.communicationLayout.addWidget(self.receivedBar, 5, 0, 1, 2)
+        self.communicationLayout.addWidget(self.receivedStatus, 5, 2)
+        self.communicationLayout.addWidget(self.closeConnection, 6, 1)
+        layout.addLayout(self.communicationLayout)
+        layout.addStretch()
+        CTab.setLayout(layout)
+        return CTab
+
+    def STabUI(self):
         SHTab = QtWidgets.QWidget()
         layout = QtWidgets.QVBoxLayout()
         layout.setSpacing(5)
@@ -295,7 +346,7 @@ class Window(QtWidgets.QWidget):
         loraOptionsLayout.addRow('Address (Rover):', self.roverAddress)
         loraOptionsLayout.addRow('Network ID:', self.networkID)
         loraOptionsLayout.addRow('Band:', self.band)
-        loraOptionsLayout.addRow('UART:', self.uart)
+        loraOptionsLayout.addRow('Baudrate:', self.uart)
         self.allSet = QtWidgets.QPushButton('Set All')
         self.allSet.clicked.connect(lambda: self.setAll()) 
         self.setParameters = QtWidgets.QPushButton('Set Parameters')
@@ -322,7 +373,7 @@ class Window(QtWidgets.QWidget):
         loraLayout.addLayout(loraVLayout)
         loraLayout.addStretch()
         portOptionsText = QtWidgets.QLabel()
-        portOptionsText.setText('Port Options')
+        portOptionsText.setText('Serial Port Options')
         portOptionsText.setFont(self.font16)
         portOptionsText.setAlignment(QtCore.Qt.AlignLeft)
         loraOptionsText = QtWidgets.QLabel()
@@ -333,14 +384,6 @@ class Window(QtWidgets.QWidget):
         mapOptionsText.setText('Map Options')
         mapOptionsText.setFont(self.font16)
         mapOptionsText.setAlignment(QtCore.Qt.AlignLeft)
-        instructionsText = QtWidgets.QLabel()
-        instructionsText.setText('Instructions')
-        instructionsText.setFont(self.font16)
-        instructionsText.setAlignment(QtCore.Qt.AlignLeft)
-        keybindsText = QtWidgets.QLabel()
-        keybindsText.setText('Keybinds')
-        keybindsText.setFont(self.font16)
-        keybindsText.setAlignment(QtCore.Qt.AlignLeft)
         self.autoPan = QtWidgets.QCheckBox('Automatically pan to rover\'s location')
         self.autoPan.setChecked(True)
         layout.addWidget(portOptionsText)
@@ -349,15 +392,6 @@ class Window(QtWidgets.QWidget):
         layout.addLayout(loraLayout)
         layout.addWidget(mapOptionsText)
         layout.addWidget(self.autoPan)
-        layout.addWidget(instructionsText)
-        instruction = QtWidgets.QLabel('1. Change Port/LoRa settings.\n2. Select COM port.\n3. Select control mode.')
-        instruction.setWordWrap(True)
-        layout.addWidget(instruction)
-        layout.addWidget(keybindsText)
-        layout.addWidget(QtWidgets.QLabel('W: Forward'))
-        layout.addWidget(QtWidgets.QLabel('A: Left'))
-        layout.addWidget(QtWidgets.QLabel('S: Reverse'))
-        layout.addWidget(QtWidgets.QLabel('D: Right'))
         layout.addStretch()
         SHTab.setLayout(layout)
         return SHTab
@@ -372,10 +406,8 @@ class Window(QtWidgets.QWidget):
         msg.exec_()
     # initialize LoRa connection
     def initLora(self):
-        self.readState = 0
         self.sendCommand(self.loraCommands[0])
-        line = self.readLine()
-        self.readState = 1
+        line = self.readLora()
         if line != 'Invalid response' and line != 'Timeout':
             return 1
         elif line == 'Invalid response':
@@ -386,17 +418,15 @@ class Window(QtWidgets.QWidget):
         text = ''
         if self.connected == True:
             if self.initLora() == 1:
-                self.readState = 0
                 for i in range(len(self.loraCommands) - 1):
                     self.sendCommand(self.loraCommands[i + 1])
-                    line = self.readLine()
+                    line = self.readLora()
                     if line == 'Timeout':
                         return
                     elif line == 'Invalid response':
                         self.msgBox('ERROR', 'Invalid response', 'ERROR')
                     else:
                         text += line + '\n'
-                self.readState = 1
                 self.msgBox('LoRa Info', text, 'OK')
         else:
             self.msgBox('ERROR', 'ERROR: Serial connection not established.', 'ERROR')
@@ -424,17 +454,14 @@ class Window(QtWidgets.QWidget):
         self.msgBox(' ', 'Everything set', 'OK')
     # send command to LoRa 
     def sendCommand(self, c):
-        self.writeQueue.put(c)
-        self.sent.setText(c)
+        self.writeBuf.put(c)
     # send custom command to LoRa
     def sendCustomCommand(self, c):
         if self.connected == False:
             self.msgBox('ERROR', 'ERROR: Serial connection not established.', 'ERROR')
             return
-        self.readState = 0
         self.sendCommand(c)
-        line = self.readLine()
-        self.readState = 1
+        line = self.readLora()
         if line != 'Invalid response' and line != 'Timeout':
             self.receivedMsg.setText(line)
             return 1
@@ -446,25 +473,16 @@ class Window(QtWidgets.QWidget):
         if button == 't':
             if self.travelState == 1:
                 data = 'Lat: ' + self.destLat.text() + ' Long: ' + self.destLong.text()
-                self.sendCommand('AT+SEND=' + self.roverAddress.text() + ',' + str(len(data)) + ',' + data + '\r\n')
+                self.createTx(data)
                 self.travelState = 0
                 self.destinationFile.write('[' + datetime.now().strftime('%b %d %H:%M:%S') + ']  ' + 'Lat: ' + \
                     self.destLat.text() + ' Long: ' + self.destLong.text() + '\n') 
                 self.travel.setText('Cancel')
                 self.map.runJavaScript(f'{self.destMarker.jsName}.setIcon(markerIcon4);')
             else:
-                data = 'Cancel'
-                self.sendCommand('AT+SEND=' + self.roverAddress.text() + ',' + str(len(data)) + ',' + data + '\r\n')
-                self.map.runJavaScript(f'{self.destMarker.jsName}.setOpacity(0)')
-                self.map.runJavaScript(f'{self.destMarker.jsName}.setIcon(markerIcon3);')
-                self.destMarker.unbindTooltip()
-                self.destLat.setText('')
-                self.destLong.setText('')
-                self.travel.setDisabled(True)
-                self.travelState = 1
-                self.travel.setText('Travel')
+                self.resetM()
         else:
-            self.sendCommand('AT+SEND=' + self.roverAddress.text() + ',' + str(len(button)) + ',' + button + '\r\n')
+            self.createTx(button)
     # switch map style
     def mapToggle(self):
         if self.currentMap: self.currentMap = 0
@@ -521,35 +539,47 @@ class Window(QtWidgets.QWidget):
     def log(self):
         self.coordinatesFile.write('[' + datetime.now().strftime('%b %d %H:%M:%S') + ']   Lat: ' + str(self.coordinate[0]) \
             + '  Long: ' + str(self.coordinate[1]) + '\n')
-        self.telemetryFile.write('[' + datetime.now().strftime('%b %d %H:%M:%S') + ']  ' + self.batteryText.text() + '  ' \
-            + self.speedText.text() + '  ' + self.distanceText.text() + '\n')
+        self.telemetryFile.write('[' + datetime.now().strftime('%b %d %H:%M:%S') + ']  ' + self.distanceText.text() + '\n')
+    # reset map and communication
+    def resetMC(self, p):
+        self.resetM()
+        self.connected = False
+        self.changeState('CLOSED', 'color: red')
+        self.controlList.setCurrentIndex(0)
+        self.address.setText('Rover\'s Address: NA')
+        self.received.setText('NA')
+        self.sent.setText('NA')
+        self.rssi.setText('RSSI: NA')
+        self.snr.setText('SNR: NA')
+        self.connectionThread.join()
+        self.writeThread.join()
+        self.currentPort = p
+        self.serialPort.close()
+        self.allSet.setDisabled(False)
+        self.setParameters.setDisabled(False)
+        self.testLora.setDisabled(False)
+        self.commandButton.setDisabled(False)
+    # reset map
+    def resetM(self):
+        data = 'Cancel'
+        self.sendCommand('AT+SEND=' + self.roverAddress.text() + ',' + str(len(data)) + ',' + data + '\r\n')
+        self.map.runJavaScript(f'{self.destMarker.jsName}.setOpacity(0)')
+        self.map.runJavaScript(f'{self.destMarker.jsName}.setIcon(markerIcon3);')
+        self.destMarker.unbindTooltip()
+        self.destLat.setText('')
+        self.destLong.setText('')
+        self.travel.setText('Travel')
+        self.travel.setDisabled(True)
+        self.travelState = 1
     # handle port switches
     def switchPort(self):
         p = self.ports[self.portList.currentIndex()]
         if p == ' ':
             if self.connected == True: 
-                self.connected = False
                 self.controlList.setDisabled(True)
-                self.controlList.setCurrentIndex(0)
                 self.hideControls(True, 'all')
-                self.travel.setText('Travel')
-                self.map.runJavaScript(f'{self.destMarker.jsName}.setOpacity(0)')
-                self.map.runJavaScript(f'{self.destMarker.jsName}.setIcon(markerIcon3);')
-                self.destMarker.unbindTooltip()
-                self.destLat.setText('')
-                self.destLong.setText('')
-                self.address.setText('Rover\'s Address: NA')
-                self.data.setText('Data: NA')
-                self.signal.setText('Signal: NA')
-                self.travel.setDisabled(True)
-                if self.travelState == 0:
-                    self.sendCommand('Cancel \r\n')
-                self.travelState = 1
-                self.readThread.join()
-                self.writeThread.join()
-                window.resize(700,720)
-                self.currentPort = p
-                self.serialPort.close()
+                self.resetMC(p)
+                window.resize(700,670)
                 return
             else: 
                 self.currentPort = p
@@ -559,73 +589,38 @@ class Window(QtWidgets.QWidget):
         else: 
             self.currentPort = p
         if self.connected == True:
-            self.connected = False
-            self.controlList.setCurrentIndex(0)
             self.hideControls(True, 'all')
-            self.travel.setText('Travel')
-            self.map.runJavaScript(f'{self.destMarker.jsName}.setOpacity(0)')
-            self.map.runJavaScript(f'{self.destMarker.jsName}.setIcon(markerIcon3);')
-            self.destMarker.unbindTooltip()
-            self.destLat.setText('')
-            self.destLong.setText('')
-            self.address.setText('Rover\'s Address: NA')
-            self.data.setText('Data: NA')
-            self.signal.setText('Signal: NA')
-            self.travel.setDisabled(True)
-            if self.travelState == 0:
-                self.sendCommand('Cancel \r\n')
-            self.travelState = 1
-            self.readThread.join()
-            self.writeThread.join()
-            window.resize(700,720)
-            self.currentPort = p
-            self.serialPort.close()
+            self.resetMC(p)
+            window.resize(700,670)
         self.serialPort = serial.Serial(port = p, baudrate = int(self.baudrateText.text()), bytesize = int(self.bytesizeText.text()), \
             timeout = int(self.timeoutText.text()), stopbits = serial.STOPBITS_ONE)
-        self.readThread = threading.Thread(target = self.read, args = [self.serialPort], daemon = True)
+        self.connectionThread = threading.Thread(target = self.connection, args = [self.serialPort], daemon = True)
         self.writeThread = threading.Thread(target = self.write, args = [self.serialPort], daemon = True)
+        self.changeState('LISTEN', 'color: orange')
         self.controlList.setDisabled(False)
         self.connected = True
-        self.readThread.start()
         self.writeThread.start()
         if self.initLora() == 0:
             self.portList.setCurrentIndex(0)
             self.switchPort()
         else:
             self.setAll()
+        self.connectionThread.start()
     # handle control switches
     def switchControl(self):
         if self.controlList.currentIndex() == 0: 
             self.hideControls(True, 'all')
-            self.map.runJavaScript(f'{self.destMarker.jsName}.setOpacity(0)')
-            self.travel.setText('Travel')
-            self.map.runJavaScript(f'{self.destMarker.jsName}.setIcon(markerIcon3);')
-            self.destMarker.unbindTooltip()
-            self.destLat.setText('')
-            self.destLong.setText('')
-            self.travel.setDisabled(True)
-            if self.travelState == 0:
-                self.sendCommand('Cancel \r\n')
-            self.travelState = 1
-            window.resize(700,720)
+            self.resetM()
+            window.resize(700,670)
         elif self.controlList.currentIndex() == 1: 
             self.hideControls(True, 'manual')
             self.hideControls(False, 'blind')
-            window.resize(700,750)
+            window.resize(700,700)
         else:
             self.hideControls(True, 'blind')
             self.hideControls(False, 'manual')
-            self.map.runJavaScript(f'{self.destMarker.jsName}.setOpacity(0)')
-            self.travel.setText('Travel')
-            self.map.runJavaScript(f'{self.destMarker.jsName}.setIcon(markerIcon3);')
-            self.destMarker.unbindTooltip()
-            self.destLat.setText('')
-            self.destLong.setText('')
-            self.travel.setDisabled(True)
-            if self.travelState == 0:
-                self.sendCommand('Cancel \r\n')
-            self.travelState = 1
-            window.resize(700,920)
+            self.resetM()
+            window.resize(700,870)
     # show/hide controls 
     def hideControls(self, h, o):
         if o == 'all':
@@ -656,41 +651,116 @@ class Window(QtWidgets.QWidget):
             self.travel.setDisabled(False)
             self.map.runJavaScript(f'{self.destMarker.jsName}.setOpacity(1)')
             self.destMarker.bindTooltip('Destination')
-    # write to LoRa's serial port
+    # write to serial port
     def write(self, ser):
         while self.connected:
-            if not self.writeQueue.empty():
-                ser.write(self.writeQueue.get().encode('Ascii'))
-    # read data transmitted from rover
-    def read(self, ser):
+            if not self.writeBuf.empty():
+                ser.write(self.writeBuf.get().encode('Ascii'))
+    # read from serial port
+    def read(self):
+        if self.serialPort.in_waiting > 0:
+            return self.serialPort.readline().decode('Ascii')
+    # create tx msg
+    def createTx(self, data):
+        msg = str(self.seqNum) + ' ' + str(self.ackNum) + ' COM ' + data
+        msg = 'AT+SEND=' + self.roverAddress.text() + ',' + str(len(msg)) + ',' + msg + '\r\n'
+        self.commandBuf.put(msg)
+    # command tx format
+    def cmdTx(self):
+        msg = self.commandBuf.get()
+        self.sent.setText(msg)
+        self.sendCommand(msg)
+    # msg tx format 
+    def msgTx(self, c):
+        msg = str(self.seqNum) + ' ' + str(self.ackNum) + ' ' + c
+        msg = 'AT+SEND=' + self.roverAddress.text() + ',' + str(len(msg)) + ',' + msg + '\r\n'
+        self.sent.setText(msg)
+        self.sendCommand(msg)
+    # msg rx format 
+    def msgRx(self, msg):
+        if msg and msg[:5] == '+RCV=':
+            self.received.setText(msg)
+            msg = msg[5:]
+            self.message = msg.split(',')
+            self.address.setText('Rover\'s Address: ' + self.message[0])
+            self.receivedFile.write('[' + datetime.now().strftime('%b %d %H:%M:%S') + ']  ' + self.message[2] + '\n') 
+            self.rssi.setText('RSSI: ' + self.message[3] + ' dBm')
+            self.snr.setText('SNR: ' + self.message[4])
+            return self.message[2]
+    # parse rx message
+    def parseMsg(self):
+        data = self.msgRx(self.read())
+        if data and (' ' in data):
+            data = data.split(' ')
+            return data
+    # change state
+    def changeState(self, s, c):
+        self.connectionState = s
+        self.connStatus.setText(s)
+        self.connStatus.setStyleSheet(c)
+    # communication state machine
+    def connection(self, ser):
         while self.connected:
-            if(ser.in_waiting > 0 and self.readState == 1):
-                line = ser.readline().decode('Ascii')
-                print(line)
-                self.receivedFile.write('[' + datetime.now().strftime('%b %d %H:%M:%S') + ']  ' + line + '\n') 
-                if line[:5] == '+RCV=':
-                    line = line[5:]
-                    self.message = line.split(',')
-                    self.address.setText('Rover\'s Address: ' + self.message[0])
-                    self.data.setText('Data: ' + self.message[2])
-                    self.signal.setText('Signal: ' + self.message[3] + ' dBm')
+            if self.connectionState == 'LISTEN':
+                data = self.parseMsg()
+                if data and data[2] == 'SYN':
+                    self.ackNum = int(data[0]) + 1
+                    self.allSet.setDisabled(True)
+                    self.setParameters.setDisabled(True)
+                    self.testLora.setDisabled(True)
+                    self.commandButton.setDisabled(True)
+                    self.msgTx('SYN')
+                    self.changeState('SYN-RECEIVED', 'color: orange')
+                    self.closeConnection.setDisabled(False)
+            elif self.connectionState == 'SYN-RECEIVED':
+                data = self.parseMsg()
+                if data and data[2] == 'ACK':
+                    self.msgTx('ACK')
+                    self.changeState('ESTABLISHED', 'color: green')
+            elif self.connectionState == 'ESTABLISHED':
+                data = self.parseMsg()
+                if data and data[2] == 'ACK':
+                    if self.closeFlag: 
+                        self.msgTx('FIN')
+                        self.changeState('FIN-WAIT', 'color: orange')
+                        self.closeFlag = 0
+                    elif not self.commandBuf.empty(): 
+                        print('sent com')
+                        self.cmdTx()
+                    else:
+                        print('sent ack')
+                        self.msgTx('ACK')
+            elif self.connectionState == 'FIN-WAIT':
+                data = self.parseMsg()
+                if data and data[2] == 'FIN':
+                    self.changeState('TIME-WAIT', 'color: orange')
+            elif self.connectionState == 'TIME-WAIT':
+                self.msgTx('ACK')
+                self.seqNum = 0
+                self.ackNum = 0
+                self.changeState('CLOSED', 'color: red')
+                time.sleep(3)
     # wait/read LoRa response
-    def readLine(self):
+    def readLora(self):
         start = time.time()
         while self.connected and (time.time() - start) < 5.0:
-            if(self.serialPort.in_waiting > 0):
-                line = self.serialPort.readline().decode('Ascii')
+            line = self.read()
+            if line:
                 print(line)
                 if line[0] == '+':
                     return line[1:]
                 return 'Invalid response'
         self.msgBox('ERROR', 'ERROR: No response from LoRa after 5 seconds.', 'ERROR')
         return 'Timeout'
+    # close connnection
+    def close(self):
+        self.closeFlag = 1
+        self.closeConnection.setDisabled(True)
     # handle exit request
     def closeEvent(self, event):
         if self.connected == True:
-            self.connected = False
             self.portList.setCurrentIndex(0)
+            self.switchPort()
         msg = 'Are you sure you want to exit the program?'
         reply = QtWidgets.QMessageBox.question(self, 'Exit', msg, QtWidgets.QMessageBox.Yes, QtWidgets.QMessageBox.No)
         if reply == QtWidgets.QMessageBox.Yes:
@@ -707,6 +777,6 @@ if __name__ == "__main__":
     import sys
     app = QtWidgets.QApplication(sys.argv)
     window = Window()
-    window.resize(700,720)
+    window.resize(700,670)
     window.show()
     sys.exit(app.exec_())
