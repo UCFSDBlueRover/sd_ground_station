@@ -710,6 +710,7 @@ class Window(QtWidgets.QWidget):
                     self.testLora.setDisabled(True)
                     self.commandButton.setDisabled(True)
                     self.msgTx('SYN')
+                    start = time.time()
                     self.changeState('SYN-RECEIVED', 'color: orange')
                     self.closeConnection.setDisabled(False)
             elif self.connectionState == 'SYN-RECEIVED':
@@ -717,6 +718,10 @@ class Window(QtWidgets.QWidget):
                 if data and data[2] == 'ACK':
                     self.msgTx('ACK')
                     self.changeState('ESTABLISHED', 'color: green')
+                if time.time() - start > 5.0:
+                    print('5 sec timeout')
+                    self.msgTx('SYN')
+                    start = time.time()
             elif self.connectionState == 'ESTABLISHED':
                 data = self.parseMsg()
                 if data and data[2] == 'ACK':
