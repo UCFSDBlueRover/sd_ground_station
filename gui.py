@@ -1,4 +1,5 @@
 from PyQt5 import QtCore, QtGui, QtWidgets
+from qt_material import apply_stylesheet
 from pyqtlet import L, MapWidget
 from math import cos, asin, sqrt, pi
 from datetime import datetime
@@ -472,7 +473,7 @@ class Window(QtWidgets.QWidget):
     def buttonPressed(self, button):
         if button == 't':
             if self.travelState == 1:
-                data = 'Lat: ' + self.destLat.text() + ' Long: ' + self.destLong.text()
+                data = '[Lat:' + self.destLat.text() + '][Long:' + self.destLong.text() + ']'
                 self.createTx(data)
                 self.travelState = 0
                 self.destinationFile.write('[' + datetime.now().strftime('%b %d %H:%M:%S') + ']  ' + 'Lat: ' + \
@@ -710,34 +711,35 @@ class Window(QtWidgets.QWidget):
                     self.testLora.setDisabled(True)
                     self.commandButton.setDisabled(True)
                     self.msgTx('SYN')
-                    start = time.time()
                     self.changeState('SYN-RECEIVED', 'color: orange')
                     self.closeConnection.setDisabled(False)
             elif self.connectionState == 'SYN-RECEIVED':
                 data = self.parseMsg()
                 if data and data[2] == 'ACK':
+                    self.seqNum =eint(data[1])
                     self.msgTx('ACK')
                     self.changeState('ESTABLISHED', 'color: green')
-                if time.time() - start > 5.0:
-                    print('5 sec timeout')
-                    self.msgTx('SYN')
-                    start = time.time()
             elif self.connectionState == 'ESTABLISHED':
                 data = self.parseMsg()
                 if data and data[2] == 'ACK':
+                    self.seqNum = int(data[1])
                     if self.closeFlag: 
                         self.msgTx('FIN')
                         self.changeState('FIN-WAIT', 'color: orange')
                         self.closeFlag = 0
                     elif not self.commandBuf.empty(): 
                         print('sent com')
+                        self.ackNum = int(data[0]) + 1
                         self.cmdTx()
                     else:
                         print('sent ack')
+                        self.ackNum = int(data[0]) + 1
                         self.msgTx('ACK')
             elif self.connectionState == 'FIN-WAIT':
                 data = self.parseMsg()
                 if data and data[2] == 'FIN':
+                    self.seqNum = int(data[1])
+                    self.ackNum = int(data[0]) + 1
                     self.changeState('TIME-WAIT', 'color: orange')
             elif self.connectionState == 'TIME-WAIT':
                 self.msgTx('ACK')
@@ -783,5 +785,6 @@ if __name__ == "__main__":
     app = QtWidgets.QApplication(sys.argv)
     window = Window()
     window.resize(700,670)
+    apply_stylesheet(app, theme='dark_blue.xml')
     window.show()
     sys.exit(app.exec_())
