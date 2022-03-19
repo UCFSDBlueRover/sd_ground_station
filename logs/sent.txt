@@ -1,0 +1,1 @@
+[Mar 18 22:41:24] X = 3213 Y = 12321 Z = 12312 Start = True Cancel = False Shutdown = True RC Preempt = False Pose Preempt = True
