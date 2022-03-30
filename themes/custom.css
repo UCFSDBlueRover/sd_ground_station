@@ -1,0 +1,44 @@
+.big_button {{
+  height: 64px;
+}}
+
+.font_12 {{
+  font: bold 12px;
+}}
+
+.font_14 {{
+  font: bold 14px;
+}}
+
+.font_20 {{
+  font: bold 20px;
+}}
+
+.header {{
+  font: bold 20px;
+  color: {QTMATERIAL_PRIMARYCOLOR}
+}}
+
+.danger {{
+  font: bold 20px;
+  color: red;
+}}
+
+.warning {{
+  font: bold 20px;
+  color: orange;
+}}
+
+.success {{
+  font: bold 20px;
+  color: green;
+}}
+
+QLabel, QCheckBox, QComboBox {{
+  font: bold 13px;
+}}
+
+QLineEdit {{
+  font: bold 13px;
+  min-width: 100px;
+}}

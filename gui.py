@@ -18,6 +18,7 @@ class Window(QtWidgets.QWidget):
         self.writeThread = threading.Thread()
         self.writeBuf = queue.Queue() # write buffer
         self.commandBuf = queue.Queue() # command buffer
+        self.lastMsg = ''; # last msg sent to rover
         self.connectionState = 'CLOSED'
         self.readState = 0
         self.closeFlag = 0
@@ -29,9 +30,6 @@ class Window(QtWidgets.QWidget):
         self.currentPort = ' ' 
         self.ports = [' '] # list of serial ports
         self.portsFullName = [' '] # verbose list of serial ports
-        for port, desc, hwid in sorted(serial.tools.list_ports.comports()):
-            self.ports.append(port)
-            self.portsFullName.append(port + ' - ' + hwid)
         self.connected = False # serial connection state
         self.serialPort = serial.Serial()
         self.setWindowIcon(QtGui.QIcon('images/icon.png'))
@@ -42,11 +40,6 @@ class Window(QtWidgets.QWidget):
         self.telemetryFile = open('logs/telemetry.txt', 'a')  
         self.sentFile = open('logs/sent.txt', 'a')  
         self.receivedFile = open('logs/received.txt', 'a')  
-        # Fonts
-        self.font14 = QtGui.QFont()
-        self.font14.setPointSize(14)
-        self.font16 = QtGui.QFont()
-        self.font16.setPointSize(16)
         # Layouts
         self.layout = QtWidgets.QVBoxLayout()
         self.setLayout(self.layout)
@@ -57,9 +50,9 @@ class Window(QtWidgets.QWidget):
         self.layout.addWidget(tabs)
 
     def CMTabUI(self):
-        self.coordinate = [28.602691, -81.200102]
-        self.originalCoordinate = [28.602691, -81.200102]
-        self.destinationCoordinate = [28.602691, -81.200102]
+        self.coordinate = [0, 0]
+        self.originalCoordinate = [0, 0]
+        self.destinationCoordinate = [0, 0]
         CMTab = QtWidgets.QWidget()
         layout = QtWidgets.QVBoxLayout()
         self.layout.setSpacing(0)
@@ -77,14 +70,15 @@ class Window(QtWidgets.QWidget):
         self.telemetryLayout.setHorizontalSpacing(10)
         self.portText = QtWidgets.QLabel()
         self.portText.setText('Port')
-        self.portText.setFont(self.font16)
+        self.portText.setProperty('class', 'header')
         self.portText.setAlignment(QtCore.Qt.AlignCenter)
         self.portList = QtWidgets.QComboBox()
         self.portList.addItems(self.portsFullName)
         self.portList.activated.connect(self.switchPort)
+        self.scanPorts() # scan serial ports
         self.controlText = QtWidgets.QLabel()
         self.controlText.setText('Control Mode')
-        self.controlText.setFont(self.font16)
+        self.controlText.setProperty('class', 'header')
         self.controlText.setAlignment(QtCore.Qt.AlignCenter)
         self.controlList = QtWidgets.QComboBox()
         self.controlList.addItems(['', 'Blind Drive', 'Manual'])
@@ -92,47 +86,47 @@ class Window(QtWidgets.QWidget):
         self.controlList.setDisabled(True)
         self.pointXText = QtWidgets.QLabel()
         self.pointXText.setText('X')
-        self.pointXText.setFont(self.font16)
+        self.pointXText.setProperty('class', 'header')
         self.pointXText.setAlignment(QtCore.Qt.AlignCenter)
         self.pointX = QtWidgets.QLineEdit()
         self.pointX.setMaxLength(10)
-        self.pointX.setFont(self.font14)
+        self.pointX.setProperty('class', 'font_14')
         self.pointX.setAlignment(QtCore.Qt.AlignCenter)
         self.pointYText = QtWidgets.QLabel()
         self.pointYText.setText('Y')
-        self.pointYText.setFont(self.font16)
+        self.pointYText.setProperty('class', 'header')
         self.pointYText.setAlignment(QtCore.Qt.AlignCenter)
         self.pointY = QtWidgets.QLineEdit()
         self.pointY.setMaxLength(10)
-        self.pointY.setFont(self.font14)
+        self.pointY.setProperty('class', 'font_14')
         self.pointY.setAlignment(QtCore.Qt.AlignCenter)
         self.pointZText = QtWidgets.QLabel()
         self.pointZText.setText('Z')
-        self.pointZText.setFont(self.font16)
+        self.pointZText.setProperty('class', 'header')
         self.pointZText.setAlignment(QtCore.Qt.AlignCenter)
         self.pointZ = QtWidgets.QLineEdit()
         self.pointZ.setMaxLength(10)
-        self.pointZ.setFont(self.font14)
+        self.pointZ.setProperty('class', 'font_14')
         self.pointZ.setAlignment(QtCore.Qt.AlignCenter)
         self.startText = QtWidgets.QLabel()
         self.startText.setText('Start')
-        self.startText.setFont(self.font16)
+        self.startText.setProperty('class', 'header')
         self.startText.setAlignment(QtCore.Qt.AlignCenter)
         self.cancelText = QtWidgets.QLabel()
         self.cancelText.setText('Cancel')
-        self.cancelText.setFont(self.font16)
+        self.cancelText.setProperty('class', 'header')
         self.cancelText.setAlignment(QtCore.Qt.AlignCenter)
         self.shutdownText = QtWidgets.QLabel()
         self.shutdownText.setText('Shutdown')
-        self.shutdownText.setFont(self.font16)
+        self.shutdownText.setProperty('class', 'header')
         self.shutdownText.setAlignment(QtCore.Qt.AlignCenter)
         self.rcPreemptText = QtWidgets.QLabel()
         self.rcPreemptText.setText('RC Preempt')
-        self.rcPreemptText.setFont(self.font16)
+        self.rcPreemptText.setProperty('class', 'header')
         self.rcPreemptText.setAlignment(QtCore.Qt.AlignCenter)
         self.posePreemptText = QtWidgets.QLabel()
         self.posePreemptText.setText('Pose Preempt')
-        self.posePreemptText.setFont(self.font16)
+        self.posePreemptText.setProperty('class', 'header')
         self.posePreemptText.setAlignment(QtCore.Qt.AlignCenter)
         self.startList = QtWidgets.QComboBox()
         self.startList.addItems(['True', 'False'])
@@ -151,31 +145,29 @@ class Window(QtWidgets.QWidget):
         self.posePreemptList.setCurrentIndex(1)
         self.manualButton = QtWidgets.QPushButton('Send Command')
         self.manualButton.clicked.connect(lambda: self.buttonPressed('m')) 
-        self.manualButton.setStyleSheet("color: green;"
-                                            "border-color: green;")
         self.destLat = QtWidgets.QLineEdit()
         self.destLat.setMaxLength(10)
         self.destLat.setAlignment(QtCore.Qt.AlignCenter)
-        self.destLat.setFont(self.font14)
+        self.destLat.setProperty('class', 'font_14')
         self.destLong = QtWidgets.QLineEdit()
         self.destLong.setMaxLength(11)
         self.destLong.setAlignment(QtCore.Qt.AlignCenter)
-        self.destLong.setFont(self.font14)
+        self.destLong.setProperty('class', 'font_14')
         self.travelState = 1
         self.travel = QtWidgets.QPushButton('Travel')
         self.travel.clicked.connect(lambda: self.buttonPressed('t')) 
         self.travel.setDisabled(True)
         self.latText = QtWidgets.QLabel()
         self.latText.setText('Lat: ' + str(self.originalCoordinate[0]))
-        self.latText.setFont(self.font14)
+        self.latText.setProperty('class', 'font_14')
         self.latText.setAlignment(QtCore.Qt.AlignCenter)
         self.longText = QtWidgets.QLabel()
         self.longText.setText('Long: ' + str(self.originalCoordinate[1]))
-        self.longText.setFont(self.font14)
+        self.longText.setProperty('class', 'font_14')
         self.longText.setAlignment(QtCore.Qt.AlignCenter)
         self.distanceText = QtWidgets.QLabel()
         self.distanceText.setText('Distance: 0 m')
-        self.distanceText.setFont(self.font14)
+        self.distanceText.setProperty('class', 'font_14')
         self.distanceText.setAlignment(QtCore.Qt.AlignCenter)
         self.starting = QtWidgets.QPushButton('Starting Location')
         self.starting.clicked.connect(lambda: self.panTo('s')) 
@@ -221,10 +213,10 @@ class Window(QtWidgets.QWidget):
         self.mapLayout = QtWidgets.QVBoxLayout()
         self.mapWidget = MapWidget()
         self.map = L.map(self.mapWidget) 
-        self.map.setView(self.coordinate, 18)
+        self.map.setView(self.originalCoordinate, 18)
         self.worldMap = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
         self.darkMap = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
-        self.maps = [self.worldMap, self.darkMap]
+        self.maps = [self.darkMap, self.worldMap]
         self.currentMap = 0
         L.tileLayer(self.maps[self.currentMap], {'maxNativeZoom': 19, 'maxZoom': 25, 'noWrap': 'true'}).addTo(self.map)
         self.marker = L.marker(self.originalCoordinate)
@@ -246,18 +238,16 @@ class Window(QtWidgets.QWidget):
         self.map.runJavaScript('var markerIcon3 = L.icon({iconUrl: \"' + self.imageDir + '/marker.png\"});')
         self.map.runJavaScript('var markerIcon4 = L.icon({iconUrl: \"' + self.imageDir + '/destination.png\"});')
         self.map.runJavaScript(f'{self.destMarker.jsName}.setIcon(markerIcon3);')
-        self.map.runJavaScript('var startCoordinate = [[' + str(self.originalCoordinate[0]) + ',' + str(self.originalCoordinate[1]) + ']]')
-        self.map.runJavaScript("var polyline = L.polyline(startCoordinate, {color: '#0077ff'}).addTo(" + self.map.jsName + ");")
-        self.map.runJavaScript('polyline.bindTooltip(\"Rover\'s Path\");')
         self.map.clicked.connect(lambda x: self.setDest(x['latlng']))
         self.mapLayout.addWidget(self.mapWidget)
         self.hideControls(True, 'all')
         self.spaceItem = QtWidgets.QSpacerItem(150, 30, QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
+        self.spaceItem2 = QtWidgets.QSpacerItem(150, 30, QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
         layout.addLayout(self.initLayout)
         layout.addItem(self.spaceItem)
         layout.addLayout(self.manualLayout)
         layout.addLayout(self.blindDriveLayout)
-        layout.addItem(self.spaceItem)
+        layout.addItem(self.spaceItem2)
         layout.addLayout(self.telemetryLayout)
         layout.addLayout(self.mapLayout)
         layout.addStretch()
@@ -269,59 +259,50 @@ class Window(QtWidgets.QWidget):
         layout = QtWidgets.QVBoxLayout()
         layout.setSpacing(5)
         self.communicationLayout = QtWidgets.QGridLayout()
-        self.communicationLayout.setVerticalSpacing(20)
-        self.communicationLayout.setHorizontalSpacing(10)
+        self.communicationLayout.setVerticalSpacing(50)
+        self.communicationLayout.setHorizontalSpacing(30)
         self.connStatusText = QtWidgets.QLabel()
         self.connStatusText.setText('Connection Status: ')
-        self.connStatusText.setFont(self.font16)
+        self.connStatusText.setProperty('class', 'header')
         self.connStatusText.setAlignment(QtCore.Qt.AlignLeft)
         self.connStatus = QtWidgets.QLabel()
         self.connStatus.setText('CLOSED')
-        self.connStatus.setStyleSheet("color: red")
-        self.connStatus.setFont(self.font16)
+        self.connStatus.setProperty('class', 'danger')
         self.connStatus.setAlignment(QtCore.Qt.AlignLeft)
         self.address = QtWidgets.QLabel()
         self.address.setText('Rover\'s Address: NA')
-        self.address.setFont(self.font16)
+        self.address.setProperty('class', 'header')
         self.address.setAlignment(QtCore.Qt.AlignLeft)
         self.rssi = QtWidgets.QLabel()
         self.rssi.setText('RSSI: NA')
-        self.rssi.setFont(self.font16)
+        self.rssi.setProperty('class', 'header')
         self.rssi.setAlignment(QtCore.Qt.AlignLeft)
         self.snr = QtWidgets.QLabel()
         self.snr.setText('SNR: NA')
-        self.snr.setFont(self.font16)
+        self.snr.setProperty('class', 'header')
         self.snr.setAlignment(QtCore.Qt.AlignLeft)
         self.sentText = QtWidgets.QLabel()
         self.sentText.setText('Sent Data:')
-        self.sentText.setFont(self.font16)
+        self.sentText.setProperty('class', 'header')
         self.sentText.setAlignment(QtCore.Qt.AlignLeft)
         self.sent = QtWidgets.QLabel()
         self.sent.setText('NA')
-        self.sent.setFont(self.font14)
+        self.sent.setProperty('class', 'font_14')
         self.sent.setAlignment(QtCore.Qt.AlignLeft)
         self.sent.setWordWrap(True)
         self.receivedText = QtWidgets.QLabel()
         self.receivedText.setText('Received Data:')
-        self.receivedText.setFont(self.font16)
+        self.receivedText.setProperty('class', 'header')
         self.receivedText.setAlignment(QtCore.Qt.AlignLeft)
         self.received = QtWidgets.QLabel()
         self.received.setText('NA')
-        self.received.setFont(self.font14)
+        self.received.setProperty('class', 'font_14')
         self.received.setAlignment(QtCore.Qt.AlignLeft)
         self.received.setWordWrap(True)
-        self.sentBar = QtWidgets.QProgressBar(self)
-        self.sentBar.setAlignment(QtCore.Qt.AlignLeft)
-        self.receivedBar = QtWidgets.QProgressBar(self)
-        self.receivedBar.setAlignment(QtCore.Qt.AlignLeft)
         self.sentStatus = QtWidgets.QLabel()
         self.sentStatus.setText('NA')
-        self.sentStatus.setFont(self.font14)
+        self.sentStatus.setProperty('class', 'header')
         self.sentStatus.setAlignment(QtCore.Qt.AlignLeft)
-        self.receivedStatus = QtWidgets.QLabel()
-        self.receivedStatus.setText('NA')
-        self.receivedStatus.setFont(self.font14)
-        self.receivedStatus.setAlignment(QtCore.Qt.AlignLeft)
         self.closeConnection = QtWidgets.QPushButton('Close Connection')
         self.closeConnection.clicked.connect(lambda: self.close()) 
         self.closeConnection.setDisabled(True)
@@ -332,13 +313,10 @@ class Window(QtWidgets.QWidget):
         self.communicationLayout.addWidget(self.connStatus, 1, 1, 1, 2)
         self.communicationLayout.addWidget(self.sentText, 2, 0)
         self.communicationLayout.addWidget(self.sent, 2, 1, 1, 2)
-        self.communicationLayout.addWidget(self.sentBar, 3, 0, 1, 2)
-        self.communicationLayout.addWidget(self.sentStatus, 3, 2)
+        self.communicationLayout.addWidget(self.sentStatus, 3, 0)
         self.communicationLayout.addWidget(self.receivedText, 4, 0)
         self.communicationLayout.addWidget(self.received, 4, 1, 1, 2)
-        self.communicationLayout.addWidget(self.receivedBar, 5, 0, 1, 2)
-        self.communicationLayout.addWidget(self.receivedStatus, 5, 2)
-        self.communicationLayout.addWidget(self.closeConnection, 6, 1)
+        self.communicationLayout.addWidget(self.closeConnection, 5, 1)
         layout.addLayout(self.communicationLayout)
         layout.addStretch()
         CTab.setLayout(layout)
@@ -350,56 +328,71 @@ class Window(QtWidgets.QWidget):
         layout.setSpacing(5)
         portLayout = QtWidgets.QFormLayout()
         loraLayout = QtWidgets.QHBoxLayout()
+        loraLayout.setSpacing(10)
         loraVLayout = QtWidgets.QVBoxLayout()
         loraOptionsLayout = QtWidgets.QFormLayout()
+        self.scanButton = QtWidgets.QPushButton('Scan Ports')
+        self.scanButton.clicked.connect(lambda: self.scanPorts()) 
         self.baudrateText = QtWidgets.QLineEdit()
-        self.baudrateText.setAlignment(QtCore.Qt.AlignRight)
+        self.baudrateText.setAlignment(QtCore.Qt.AlignCenter)
         self.baudrateText.setText('115200')
         self.baudrateText.setFixedWidth(70)
+        self.baudrateText.setProperty('class', 'font_12')
         self.bytesizeText = QtWidgets.QLineEdit()
-        self.bytesizeText.setAlignment(QtCore.Qt.AlignRight)
+        self.bytesizeText.setAlignment(QtCore.Qt.AlignCenter)
         self.bytesizeText.setText('8')
         self.bytesizeText.setFixedWidth(70)
+        self.bytesizeText.setProperty('class', 'font_12')
         self.timeoutText = QtWidgets.QLineEdit()
-        self.timeoutText.setAlignment(QtCore.Qt.AlignRight)
+        self.timeoutText.setAlignment(QtCore.Qt.AlignCenter)
         self.timeoutText.setText('2')
         self.timeoutText.setFixedWidth(70)
+        self.timeoutText.setProperty('class', 'font_12')
         self.spreadingFactor = QtWidgets.QLineEdit()
-        self.spreadingFactor.setAlignment(QtCore.Qt.AlignRight)
+        self.spreadingFactor.setAlignment(QtCore.Qt.AlignCenter)
         self.spreadingFactor.setText('12')
         self.spreadingFactor.setFixedWidth(70)
+        self.spreadingFactor.setProperty('class', 'font_12')
         self.bandwidth = QtWidgets.QLineEdit()
-        self.bandwidth.setAlignment(QtCore.Qt.AlignRight)
+        self.bandwidth.setAlignment(QtCore.Qt.AlignCenter)
         self.bandwidth.setText('7')
         self.bandwidth.setFixedWidth(70)
+        self.bandwidth.setProperty('class', 'font_12')
         self.codingRate = QtWidgets.QLineEdit()
-        self.codingRate.setAlignment(QtCore.Qt.AlignRight)
+        self.codingRate.setAlignment(QtCore.Qt.AlignCenter)
         self.codingRate.setText('2')
         self.codingRate.setFixedWidth(70)
+        self.codingRate.setProperty('class', 'font_12')
         self.preamble = QtWidgets.QLineEdit()
-        self.preamble.setAlignment(QtCore.Qt.AlignRight)
+        self.preamble.setAlignment(QtCore.Qt.AlignCenter)
         self.preamble.setText('5')
         self.preamble.setFixedWidth(70)
+        self.preamble.setProperty('class', 'font_12')
         self.gsAddress = QtWidgets.QLineEdit()
-        self.gsAddress.setAlignment(QtCore.Qt.AlignRight)
+        self.gsAddress.setAlignment(QtCore.Qt.AlignCenter)
         self.gsAddress.setText('101')
         self.gsAddress.setFixedWidth(70)
+        self.gsAddress.setProperty('class', 'font_12')
         self.roverAddress = QtWidgets.QLineEdit()
-        self.roverAddress.setAlignment(QtCore.Qt.AlignRight)
+        self.roverAddress.setAlignment(QtCore.Qt.AlignCenter)
         self.roverAddress.setText('102')
         self.roverAddress.setFixedWidth(70)
+        self.roverAddress.setProperty('class', 'font_12')
         self.networkID = QtWidgets.QLineEdit()
-        self.networkID.setAlignment(QtCore.Qt.AlignRight)
+        self.networkID.setAlignment(QtCore.Qt.AlignCenter)
         self.networkID.setText('5')
         self.networkID.setFixedWidth(70)
+        self.networkID.setProperty('class', 'font_12')
         self.band = QtWidgets.QLineEdit()
-        self.band.setAlignment(QtCore.Qt.AlignRight)
+        self.band.setAlignment(QtCore.Qt.AlignCenter)
         self.band.setText('915000000')
         self.band.setFixedWidth(70)
+        self.band.setProperty('class', 'font_12')
         self.uart = QtWidgets.QLineEdit()
-        self.uart.setAlignment(QtCore.Qt.AlignRight)
+        self.uart.setAlignment(QtCore.Qt.AlignCenter)
         self.uart.setText('115200')
         self.uart.setFixedWidth(70)
+        self.uart.setProperty('class', 'font_12')
         portLayout.addRow('Baudrate:', self.baudrateText)
         portLayout.addRow('Bytesize:', self.bytesizeText)
         portLayout.addRow('Timeout:', self.timeoutText)
@@ -419,15 +412,16 @@ class Window(QtWidgets.QWidget):
         self.testLora = QtWidgets.QPushButton('LoRa Info')
         self.testLora.clicked.connect(lambda: self.loraTest()) 
         self.customCommand = QtWidgets.QLineEdit()
-        self.customCommand.setAlignment(QtCore.Qt.AlignRight)
+        self.customCommand.setAlignment(QtCore.Qt.AlignCenter)
         self.customCommand.setText('Enter Command')
         self.customCommand.setFixedWidth(150)
         self.commandButton = QtWidgets.QPushButton('Send Command')
         self.commandButton.clicked.connect(lambda: self.sendCustomCommand(self.customCommand.text() + '\r\n'))
         self.receivedMsg = QtWidgets.QLineEdit()
-        self.receivedMsg.setAlignment(QtCore.Qt.AlignRight)
+        self.receivedMsg.setAlignment(QtCore.Qt.AlignCenter)
         self.receivedMsg.setText('LoRa response')
         self.receivedMsg.setFixedWidth(150)
+        loraVLayout.addWidget(self.scanButton)
         loraVLayout.addWidget(self.allSet)
         loraVLayout.addWidget(self.setParameters)
         loraVLayout.addWidget(self.testLora)
@@ -439,15 +433,15 @@ class Window(QtWidgets.QWidget):
         loraLayout.addStretch()
         portOptionsText = QtWidgets.QLabel()
         portOptionsText.setText('Serial Port Options')
-        portOptionsText.setFont(self.font16)
+        portOptionsText.setProperty('class', 'header')
         portOptionsText.setAlignment(QtCore.Qt.AlignLeft)
         loraOptionsText = QtWidgets.QLabel()
         loraOptionsText.setText('LoRa Options')
-        loraOptionsText.setFont(self.font16)
+        loraOptionsText.setProperty('class', 'header')
         loraOptionsText.setAlignment(QtCore.Qt.AlignLeft)
         mapOptionsText = QtWidgets.QLabel()
         mapOptionsText.setText('Map Options')
-        mapOptionsText.setFont(self.font16)
+        mapOptionsText.setProperty('class', 'header')
         mapOptionsText.setAlignment(QtCore.Qt.AlignLeft)
         self.autoPan = QtWidgets.QCheckBox('Automatically pan to rover\'s location')
         self.autoPan.setChecked(True)
@@ -462,13 +456,23 @@ class Window(QtWidgets.QWidget):
         return SHTab
     # message box template
     def msgBox(self, t, m, b):
-        msg = QtWidgets.QMessageBox()
+        msg = QtWidgets.QMessageBox(self)
         msg.setText(m)
         msg.setWindowTitle(t)
         msg.setStandardButtons(QtWidgets.QMessageBox.Ok)
         if b != 'OK':
             msg.setIcon(QtWidgets.QMessageBox.Critical)
         msg.exec_()
+    # scan serial ports
+    def scanPorts(self):
+        self.portList.clear()
+        self.currentPort = ' ' 
+        self.ports = [' '] # list of serial ports
+        self.portsFullName = [' '] # verbose list of serial ports
+        for port, desc, hwid in sorted(serial.tools.list_ports.comports()):
+            self.ports.append(port)
+            self.portsFullName.append(port + ' - ' + hwid)
+        self.portList.addItems(self.portsFullName)
     # initialize LoRa connection
     def initLora(self):
         self.sendCommand(self.loraCommands[0])
@@ -568,14 +572,6 @@ class Window(QtWidgets.QWidget):
         else: self.map.panTo(self.coordinate)
     # listen for keypresses
     def keyPressEvent(self, event):
-        if event.key() == QtCore.Qt.Key_U:
-            self.update('u')
-        if event.key() == QtCore.Qt.Key_H:
-            self.update('h')
-        if event.key() == QtCore.Qt.Key_J:
-            self.update('j')
-        if event.key() == QtCore.Qt.Key_K:
-            self.update('k')
         if self.controlList.currentIndex() == 2: 
             if event.key() == QtCore.Qt.Key_W:
                 self.buttonPressed('w')
@@ -586,15 +582,11 @@ class Window(QtWidgets.QWidget):
             if event.key() == QtCore.Qt.Key_D:
                 self.buttonPressed('d')
     # update map/logs
-    def update(self, d):
-        self.updateGPS(d)
+    def update(self, i):
+        self.updateGPS(i)
         self.log()
     # update map
-    def updateGPS(self, d):
-        if d == 'u': self.coordinate[0] += 0.0002
-        elif d == 'h': self.coordinate[1] -= 0.0002
-        elif d == 'j': self.coordinate[0] -= 0.0002
-        elif d == 'k': self.coordinate[1] += 0.0002
+    def updateGPS(self, i):
         lat = round(self.coordinate[0], 6)
         long = round(self.coordinate[1], 6)
         self.latText.setText('Lat: ' + str(lat))
@@ -602,8 +594,14 @@ class Window(QtWidgets.QWidget):
         self.distance = round(self.getDistance(self.originalCoordinate, self.coordinate), 3)
         self.distanceText.setText('Distance: ' + str(self.distance) + ' m')
         self.marker2.setLatLng(self.coordinate)
-        self.map.runJavaScript('polyline.addLatLng([' + str(self.coordinate[0]) + ',' + str(self.coordinate[1]) + '])')
-        if(self.autoPan.isChecked()): self.map.panTo(self.coordinate)
+        if i: 
+           self.map.runJavaScript('polyline.addLatLng([' + str(self.coordinate[0]) + ',' + str(self.coordinate[1]) + '])')
+        else:
+            self.marker.setLatLng(self.originalCoordinate)
+            self.map.runJavaScript('var startCoordinate = [[' + str(self.originalCoordinate[0]) + ',' + str(self.originalCoordinate[1]) + ']]')
+            self.map.runJavaScript("var polyline = L.polyline(startCoordinate, {color: '#0077ff'}).addTo(" + self.map.jsName + ");")
+            self.map.runJavaScript('polyline.bindTooltip(\"Rover\'s Path\");')
+        if self.autoPan.isChecked(): self.map.panTo(self.coordinate)
     # distance calculation
     def getDistance(self, start, current):
         p = pi / 180
@@ -618,7 +616,9 @@ class Window(QtWidgets.QWidget):
     def resetMC(self, p):
         self.resetM()
         self.connected = False
-        self.changeState('CLOSED', 'color: red')
+        self.changeState('CLOSED', 'danger')
+        self.seqNum = 0;
+        self.ackNum = 0;
         self.controlList.setCurrentIndex(0)
         self.address.setText('Rover\'s Address: NA')
         self.received.setText('NA')
@@ -670,7 +670,7 @@ class Window(QtWidgets.QWidget):
             timeout = int(self.timeoutText.text()), stopbits = serial.STOPBITS_ONE)
         self.connectionThread = threading.Thread(target = self.connection, args = [self.serialPort], daemon = True)
         self.writeThread = threading.Thread(target = self.write, args = [self.serialPort], daemon = True)
-        self.changeState('LISTEN', 'color: orange')
+        self.changeState('LISTEN', 'warning')
         self.controlList.setDisabled(False)
         self.connected = True
         self.writeThread.start()
@@ -762,18 +762,20 @@ class Window(QtWidgets.QWidget):
             return self.serialPort.readline().decode()
     # create tx msg
     def createTx(self, data):
-        msg = str(self.seqNum) + ' ' + str(self.ackNum) + ' COM ' + data
-        msg = 'AT+SEND=' + self.roverAddress.text() + ',' + str(len(msg)) + ',' + msg + '\r\n'
+        msg = 'COM ' + data
         self.commandBuf.put(msg)
     # command tx format
     def cmdTx(self):
         msg = self.commandBuf.get()
+        msg = str(self.seqNum) + ' ' + str(self.ackNum) + ' ' + msg
+        msg = 'AT+SEND=' + self.roverAddress.text() + ',' + str(len(msg)) + ',' + msg + '\r\n'
         self.sent.setText(msg)
         self.sendCommand(msg)
     # msg tx format 
     def msgTx(self, c):
         msg = str(self.seqNum) + ' ' + str(self.ackNum) + ' ' + c
         msg = 'AT+SEND=' + self.roverAddress.text() + ',' + str(len(msg)) + ',' + msg + '\r\n'
+        self.lastMsg = msg
         self.sent.setText(msg)
         self.sendCommand(msg)
     # msg rx format 
@@ -797,7 +799,9 @@ class Window(QtWidgets.QWidget):
     def changeState(self, s, c):
         self.connectionState = s
         self.connStatus.setText(s)
-        self.connStatus.setStyleSheet(c)
+        self.connStatus.setProperty('class', c)
+        self.style().unpolish(self.connStatus)
+        self.style().polish(self.connStatus)
     # communication state machine
     def connection(self, ser):
         while self.connected:
@@ -810,41 +814,54 @@ class Window(QtWidgets.QWidget):
                     self.testLora.setDisabled(True)
                     self.commandButton.setDisabled(True)
                     self.msgTx('SYN')
-                    self.changeState('SYN-RECEIVED', 'color: orange')
+                    self.changeState('SYN-RECEIVED', 'warning')
                     self.closeConnection.setDisabled(False)
             elif self.connectionState == 'SYN-RECEIVED':
                 data = self.parseMsg()
                 if data and data[2] == 'ACK':
                     self.seqNum = int(data[1])
                     self.msgTx('ACK')
-                    self.changeState('ESTABLISHED', 'color: green')
+                    self.changeState('ESTABLISHED', 'success')
             elif self.connectionState == 'ESTABLISHED':
                 data = self.parseMsg()
                 if data and data[2] == 'ACK':
-                    self.seqNum = int(data[1])
-                    if self.closeFlag: 
-                        self.msgTx('FIN')
-                        self.changeState('FIN-WAIT', 'color: orange')
-                        self.closeFlag = 0
-                    elif not self.commandBuf.empty(): 
-                        print('sent com')
-                        self.ackNum = int(data[0]) + 1
-                        self.cmdTx()
+                    if int(data[0]) != self.ackNum: 
+                        self.sent.setText(self.lastMsg)
+                        self.sentStatus.setText("Sequence Error: Retransmitting")
+                        self.sentStatus.setProperty('class', 'danger')
+                        self.sendCommand(self.lastMsg)
                     else:
-                        print('sent ack')
-                        self.ackNum = int(data[0]) + 1
-                        self.msgTx('ACK')
+                        self.coordinate = [int(data[3]), int(data[4])]
+                        if self.originalCoordinate == [0,0]:
+                            self.originalCoordinate = [int(data[3]), int(data[4])]
+                            self.update(False)
+                        else :
+                            self.update(True)
+                        self.sentStatus.setText("Message sent successfully")
+                        self.sentStatus.setProperty('class', 'success')
+                        self.seqNum = int(data[1])
+                        if self.closeFlag: 
+                            self.msgTx('FIN')
+                            self.changeState('FIN-WAIT', 'warning')
+                            self.closeFlag = 0
+                        elif not self.commandBuf.empty(): 
+                            self.ackNum = int(data[0]) + 1
+                            self.cmdTx()
+                        else:
+                            self.ackNum = int(data[0]) + 1
+                            self.msgTx('ACK')
             elif self.connectionState == 'FIN-WAIT':
                 data = self.parseMsg()
                 if data and data[2] == 'FIN':
                     self.seqNum = int(data[1])
                     self.ackNum = int(data[0]) + 1
-                    self.changeState('TIME-WAIT', 'color: orange')
+                    self.changeState('TIME-WAIT', 'warning')
             elif self.connectionState == 'TIME-WAIT':
                 self.msgTx('ACK')
                 self.seqNum = 0
                 self.ackNum = 0
-                self.changeState('CLOSED', 'color: red')
+                self.changeState('CLOSED', 'danger')
+                self.scanPorts()
                 time.sleep(3)
     # wait/read LoRa response
     def readLora(self):
@@ -884,6 +901,17 @@ if __name__ == "__main__":
     app = QtWidgets.QApplication(sys.argv)
     window = Window()
     window.resize(700,670)
-    apply_stylesheet(app, theme='dark_blue.xml')
+    extra = {
+        # Button colors
+        'red': '#dc3545',
+        'orange': '#ffc107',
+        'green': '#17a2b8',
+        # Font
+        'font_family': 'Roboto',
+    }
+    apply_stylesheet(app, theme='themes/colors.xml', extra=extra)
+    stylesheet = app.styleSheet()
+    with open('themes/custom.css') as file:
+        app.setStyleSheet(stylesheet + file.read().format(**os.environ))
     window.show()
     sys.exit(app.exec_())
