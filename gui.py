@@ -157,6 +157,26 @@ class Window(QtWidgets.QWidget):
         self.travel = QtWidgets.QPushButton('Travel')
         self.travel.clicked.connect(lambda: self.buttonPressed('t')) 
         self.travel.setDisabled(True)
+        self.stateText = QtWidgets.QLabel()
+        self.stateText.setText('State: NA')
+        self.stateText.setProperty('class', 'font_14')
+        self.stateText.setAlignment(QtCore.Qt.AlignCenter)
+        self.posXText = QtWidgets.QLabel()
+        self.posXText.setText('Pos X: NA')
+        self.posXText.setProperty('class', 'font_14')
+        self.posXText.setAlignment(QtCore.Qt.AlignCenter)
+        self.posYText = QtWidgets.QLabel()
+        self.posYText.setText('Pos Y: NA')
+        self.posYText.setProperty('class', 'font_14')
+        self.posYText.setAlignment(QtCore.Qt.AlignCenter)
+        self.posZText = QtWidgets.QLabel()
+        self.posZText.setText('Pos Z: NA')
+        self.posZText.setProperty('class', 'font_14')
+        self.posZText.setAlignment(QtCore.Qt.AlignCenter)
+        self.altText = QtWidgets.QLabel()
+        self.altText.setText('Altitude: NA')
+        self.altText.setProperty('class', 'font_14')
+        self.altText.setAlignment(QtCore.Qt.AlignCenter)
         self.latText = QtWidgets.QLabel()
         self.latText.setText('Lat: ' + str(self.originalCoordinate[0]))
         self.latText.setProperty('class', 'font_14')
@@ -204,12 +224,17 @@ class Window(QtWidgets.QWidget):
         self.blindDriveLayout.addWidget(self.destLat, 0, 0)
         self.blindDriveLayout.addWidget(self.destLong, 0, 1)
         self.blindDriveLayout.addWidget(self.travel, 0, 2)
-        self.telemetryLayout.addWidget(self.latText, 0, 0)
-        self.telemetryLayout.addWidget(self.longText, 0, 1)
-        self.telemetryLayout.addWidget(self.distanceText, 0, 2)
-        self.telemetryLayout.addWidget(self.starting, 1, 0)
-        self.telemetryLayout.addWidget(self.current, 1, 1)
-        self.telemetryLayout.addWidget(self.toggle, 1, 2)
+        self.telemetryLayout.addWidget(self.stateText, 0, 0)
+        self.telemetryLayout.addWidget(self.altText, 0, 2)
+        self.telemetryLayout.addWidget(self.posXText, 1, 0)
+        self.telemetryLayout.addWidget(self.posYText, 1, 1)
+        self.telemetryLayout.addWidget(self.posZText, 1, 2)
+        self.telemetryLayout.addWidget(self.latText, 2, 0)
+        self.telemetryLayout.addWidget(self.longText, 2, 1)
+        self.telemetryLayout.addWidget(self.distanceText, 2, 2)
+        self.telemetryLayout.addWidget(self.starting, 3, 0)
+        self.telemetryLayout.addWidget(self.current, 3, 1)
+        self.telemetryLayout.addWidget(self.toggle, 3, 2)
         self.mapLayout = QtWidgets.QVBoxLayout()
         self.mapWidget = MapWidget()
         self.map = L.map(self.mapWidget) 
@@ -825,21 +850,29 @@ class Window(QtWidgets.QWidget):
             elif self.connectionState == 'ESTABLISHED':
                 data = self.parseMsg()
                 if data and data[2] == 'ACK':
+                    print(data[0] + ' ' + str(self.ackNum))
                     if int(data[0]) != self.ackNum: 
                         self.sent.setText(self.lastMsg)
                         self.sentStatus.setText("Sequence Error: Retransmitting")
                         self.sentStatus.setProperty('class', 'danger')
                         self.sendCommand(self.lastMsg)
                     else:
-                        self.coordinate = [int(data[3]), int(data[4])]
-                        if self.originalCoordinate == [0,0]:
-                            self.originalCoordinate = [int(data[3]), int(data[4])]
-                            self.update(False)
-                        else :
-                            self.update(True)
+                        print(len(data))
                         self.sentStatus.setText("Message sent successfully")
                         self.sentStatus.setProperty('class', 'success')
                         self.seqNum = int(data[1])
+                        if len(data) > 3:
+                            self.stateText.setText('State: ' + data[3])
+                            self.posXText.setText('Pos X: ' + data[4])
+                            self.posYText.setText('Pos Y: ' + data[5])
+                            self.posZText.setText('Pos Z: ' + data[6])
+                            self.coordinate = [float(data[7]), float(data[8])]
+                            if self.originalCoordinate == [0,0]:
+                                self.originalCoordinate = [float(data[7]), float(data[8])]
+                                self.update(False)
+                            else :
+                                self.update(True)
+                            self.altText.setText('Altitude: ' + data[9] + ' m')
                         if self.closeFlag: 
                             self.msgTx('FIN')
                             self.changeState('FIN-WAIT', 'warning')
