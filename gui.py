@@ -62,6 +62,9 @@ class Window(QtWidgets.QWidget):
         self.manualLayout = QtWidgets.QGridLayout()
         self.manualLayout.setVerticalSpacing(10)
         self.manualLayout.setHorizontalSpacing(10)
+        self.manualLayout2 = QtWidgets.QGridLayout()
+        self.manualLayout2.setVerticalSpacing(10)
+        self.manualLayout2.setHorizontalSpacing(10)
         self.blindDriveLayout = QtWidgets.QGridLayout()
         self.blindDriveLayout.setVerticalSpacing(10)
         self.blindDriveLayout.setHorizontalSpacing(10)
@@ -81,7 +84,7 @@ class Window(QtWidgets.QWidget):
         self.controlText.setProperty('class', 'header')
         self.controlText.setAlignment(QtCore.Qt.AlignCenter)
         self.controlList = QtWidgets.QComboBox()
-        self.controlList.addItems(['', 'Blind Drive', 'Manual'])
+        self.controlList.addItems(['', 'Blind Drive', 'Manual 1', 'Manual 2'])
         self.controlList.activated.connect(self.switchControl)
         self.controlList.setDisabled(True)
         self.pointXText = QtWidgets.QLabel()
@@ -92,6 +95,7 @@ class Window(QtWidgets.QWidget):
         self.pointX.setMaxLength(10)
         self.pointX.setProperty('class', 'font_14')
         self.pointX.setAlignment(QtCore.Qt.AlignCenter)
+        self.pointX.setText('0')
         self.pointYText = QtWidgets.QLabel()
         self.pointYText.setText('Y')
         self.pointYText.setProperty('class', 'header')
@@ -100,6 +104,7 @@ class Window(QtWidgets.QWidget):
         self.pointY.setMaxLength(10)
         self.pointY.setProperty('class', 'font_14')
         self.pointY.setAlignment(QtCore.Qt.AlignCenter)
+        self.pointY.setText('0')
         self.pointZText = QtWidgets.QLabel()
         self.pointZText.setText('Z')
         self.pointZText.setProperty('class', 'header')
@@ -108,6 +113,7 @@ class Window(QtWidgets.QWidget):
         self.pointZ.setMaxLength(10)
         self.pointZ.setProperty('class', 'font_14')
         self.pointZ.setAlignment(QtCore.Qt.AlignCenter)
+        self.pointZ.setText('0')
         self.startText = QtWidgets.QLabel()
         self.startText.setText('Start')
         self.startText.setProperty('class', 'header')
@@ -144,7 +150,45 @@ class Window(QtWidgets.QWidget):
         self.posePreemptList.addItems(['True', 'False'])
         self.posePreemptList.setCurrentIndex(1)
         self.manualButton = QtWidgets.QPushButton('Send Command')
-        self.manualButton.clicked.connect(lambda: self.buttonPressed('m')) 
+        self.manualButton.clicked.connect(lambda: self.buttonPressed('2')) 
+        self.forwardText = QtWidgets.QLabel()
+        self.forwardText.setText('Forward')
+        self.forwardText.setProperty('class', 'header')
+        self.forwardText.setAlignment(QtCore.Qt.AlignCenter)
+        self.forward = QtWidgets.QLineEdit()
+        self.forward.setMaxLength(10)
+        self.forward.setProperty('class', 'font_14')
+        self.forward.setAlignment(QtCore.Qt.AlignCenter)
+        self.forward.setText('0')
+        self.leftText = QtWidgets.QLabel()
+        self.leftText.setText('Left')
+        self.leftText.setProperty('class', 'header')
+        self.leftText.setAlignment(QtCore.Qt.AlignCenter)
+        self.left = QtWidgets.QLineEdit()
+        self.left.setMaxLength(10)
+        self.left.setProperty('class', 'font_14')
+        self.left.setAlignment(QtCore.Qt.AlignCenter)
+        self.left.setText('0')
+        self.reverseText = QtWidgets.QLabel()
+        self.reverseText.setText('Reverse')
+        self.reverseText.setProperty('class', 'header')
+        self.reverseText.setAlignment(QtCore.Qt.AlignCenter)
+        self.reverse = QtWidgets.QLineEdit()
+        self.reverse.setMaxLength(10)
+        self.reverse.setProperty('class', 'font_14')
+        self.reverse.setAlignment(QtCore.Qt.AlignCenter)
+        self.reverse.setText('0')
+        self.rightText = QtWidgets.QLabel()
+        self.rightText.setText('Right')
+        self.rightText.setProperty('class', 'header')
+        self.rightText.setAlignment(QtCore.Qt.AlignCenter)
+        self.right = QtWidgets.QLineEdit()
+        self.right.setMaxLength(10)
+        self.right.setProperty('class', 'font_14')
+        self.right.setAlignment(QtCore.Qt.AlignCenter)
+        self.right.setText('0')
+        self.manualButton2 = QtWidgets.QPushButton('Send Command')
+        self.manualButton2.clicked.connect(lambda: self.buttonPressed('3')) 
         self.destLat = QtWidgets.QLineEdit()
         self.destLat.setMaxLength(10)
         self.destLat.setAlignment(QtCore.Qt.AlignCenter)
@@ -155,7 +199,7 @@ class Window(QtWidgets.QWidget):
         self.destLong.setProperty('class', 'font_14')
         self.travelState = 1
         self.travel = QtWidgets.QPushButton('Travel')
-        self.travel.clicked.connect(lambda: self.buttonPressed('t')) 
+        self.travel.clicked.connect(lambda: self.buttonPressed('1')) 
         self.travel.setDisabled(True)
         self.stateText = QtWidgets.QLabel()
         self.stateText.setText('State: NA')
@@ -221,6 +265,18 @@ class Window(QtWidgets.QWidget):
         self.manualLayout.setColumnStretch(2, 1)
         self.manualLayout.setColumnStretch(3, 1)
         self.manualLayout.setColumnStretch(4, 1)
+        self.manualLayout2.addWidget(self.forwardText, 0, 1)
+        self.manualLayout2.addWidget(self.forward, 1, 1)
+        self.manualLayout2.addWidget(self.leftText, 2, 0)
+        self.manualLayout2.addWidget(self.reverseText, 2, 1)
+        self.manualLayout2.addWidget(self.rightText, 2, 2)
+        self.manualLayout2.addWidget(self.left, 3, 0)
+        self.manualLayout2.addWidget(self.reverse, 3, 1)
+        self.manualLayout2.addWidget(self.right, 3, 2)
+        self.manualLayout2.addWidget(self.manualButton2, 4, 1)
+        self.manualLayout2.setColumnStretch(0, 1)
+        self.manualLayout2.setColumnStretch(1, 1)
+        self.manualLayout2.setColumnStretch(2, 1)
         self.blindDriveLayout.addWidget(self.destLat, 0, 0)
         self.blindDriveLayout.addWidget(self.destLong, 0, 1)
         self.blindDriveLayout.addWidget(self.travel, 0, 2)
@@ -271,6 +327,7 @@ class Window(QtWidgets.QWidget):
         layout.addLayout(self.initLayout)
         layout.addItem(self.spaceItem)
         layout.addLayout(self.manualLayout)
+        layout.addLayout(self.manualLayout2)
         layout.addLayout(self.blindDriveLayout)
         layout.addItem(self.spaceItem2)
         layout.addLayout(self.telemetryLayout)
@@ -548,6 +605,7 @@ class Window(QtWidgets.QWidget):
         self.msgBox(' ', 'Everything set', 'OK')
     # send command to LoRa 
     def sendCommand(self, c):
+        print(c)
         self.writeBuf.put(c)
     # send custom command to LoRa
     def sendCustomCommand(self, c):
@@ -564,10 +622,10 @@ class Window(QtWidgets.QWidget):
             return 0
     # Handle input from user
     def buttonPressed(self, button):
-        if button == 't':
+        if button == '1':
             if self.travelState == 1:
                 data = '[Lat:' + self.destLat.text() + '][Long:' + self.destLong.text() + ']'
-                self.createTx(data)
+                self.createTx(data, 1)
                 self.travelState = 0
                 self.sentFile.write('[' + datetime.now().strftime('%b %d %H:%M:%S') + ']  ' + 'Lat: ' + \
                     self.destLat.text() + ' Long: ' + self.destLong.text() + '\n') 
@@ -575,17 +633,22 @@ class Window(QtWidgets.QWidget):
                 self.map.runJavaScript(f'{self.destMarker.jsName}.setIcon(markerIcon4);')
             else:
                 self.resetM()
-        elif button == 'm':
+        elif button == '2':
             data = self.pointX.text() + ' ' + self.pointY.text() + ' ' + self.pointZ.text() + ' ' + \
                 self.startList.currentText() + ' ' + self.cancelList.currentText() + ' ' + self.shutdownList.currentText() + \
                 ' ' + self.rcPreemptList.currentText() +  ' ' + self.posePreemptList.currentText()
-            self.createTx(data)
+            self.createTx(data, 2)
             self.sentFile.write('[' + datetime.now().strftime('%b %d %H:%M:%S') + '] X = ' + self.pointX.text() + \
                 ' Y = ' + self.pointY.text() + ' Z = ' + self.pointZ.text() + ' Start = ' + self.startList.currentText() + \
                 ' Cancel = ' + self.cancelList.currentText() + ' Shutdown = ' + self.shutdownList.currentText() + \
                 ' RC Preempt = ' + self.rcPreemptList.currentText() +  ' Pose Preempt = ' + self.posePreemptList.currentText())
+        elif button == '3':
+            data = self.forward.text() + ' ' + self.reverse.text() + ' ' + self.left.text() + ' ' + self.right.text()
+            self.createTx(data, 3)
+            self.sentFile.write('[' + datetime.now().strftime('%b %d %H:%M:%S') + '] Forward: ' + self.forward.text() + \
+                ' Reverse: ' + self.reverse.text() + ' Left: ' + self.left.text() + ' Right: ' + self.right.text())
         else:
-            self.createTx(button)
+            self.createTx(button, 4)
     # switch map style
     def mapToggle(self):
         if self.currentMap: self.currentMap = 0
@@ -596,16 +659,7 @@ class Window(QtWidgets.QWidget):
         if(location == 's'): self.map.panTo(self.originalCoordinate)
         else: self.map.panTo(self.coordinate)
     # listen for keypresses
-    def keyPressEvent(self, event):
-        if self.controlList.currentIndex() == 2: 
-            if event.key() == QtCore.Qt.Key_W:
-                self.buttonPressed('w')
-            if event.key() == QtCore.Qt.Key_A:
-                self.buttonPressed('a')
-            if event.key() == QtCore.Qt.Key_S:
-                self.buttonPressed('s')
-            if event.key() == QtCore.Qt.Key_D:
-                self.buttonPressed('d')
+    #def keyPressEvent(self, event):
     # update map/logs
     def update(self, i):
         self.updateGPS(i)
@@ -712,14 +766,22 @@ class Window(QtWidgets.QWidget):
             self.resetM()
             window.resize(700,670)
         elif self.controlList.currentIndex() == 1: 
-            self.hideControls(True, 'manual')
+            self.hideControls(True, 'manual 1')
+            self.hideControls(True, 'manual 2')
             self.hideControls(False, 'blind')
             window.resize(700,700)
-        else:
+        elif self.controlList.currentIndex() == 2: 
             self.hideControls(True, 'blind')
-            self.hideControls(False, 'manual')
+            self.hideControls(True, 'manual 2')
+            self.hideControls(False, 'manual 1')
             self.resetM()
             window.resize(700,870)
+        else:
+            self.hideControls(True, 'blind')
+            self.hideControls(True, 'manual 1')
+            self.hideControls(False, 'manual 2')
+            self.resetM()
+            window.resize(700,850)
     # show/hide controls 
     def hideControls(self, h, o):
         if o == 'all':
@@ -740,10 +802,19 @@ class Window(QtWidgets.QWidget):
             self.rcPreemptList.setHidden(h)
             self.posePreemptList.setHidden(h)
             self.manualButton.setHidden(h)
+            self.forwardText.setHidden(h)
+            self.forward.setHidden(h)
+            self.leftText.setHidden(h)
+            self.left.setHidden(h)
+            self.reverseText.setHidden(h)
+            self.reverse.setHidden(h)
+            self.rightText.setHidden(h)
+            self.right.setHidden(h)
+            self.manualButton2.setHidden(h)
             self.destLat.setHidden(h)
             self.destLong.setHidden(h)
             self.travel.setHidden(h)
-        if o == 'manual':
+        elif o == 'manual 1':
             self.pointXText.setHidden(h)
             self.pointX.setHidden(h)
             self.pointYText.setHidden(h)
@@ -761,6 +832,16 @@ class Window(QtWidgets.QWidget):
             self.rcPreemptList.setHidden(h)
             self.posePreemptList.setHidden(h)
             self.manualButton.setHidden(h)
+        elif o == 'manual 2':
+            self.forwardText.setHidden(h)
+            self.forward.setHidden(h)
+            self.leftText.setHidden(h)
+            self.left.setHidden(h)
+            self.reverseText.setHidden(h)
+            self.reverse.setHidden(h)
+            self.rightText.setHidden(h)
+            self.right.setHidden(h)
+            self.manualButton2.setHidden(h)
         else: 
             self.destLat.setHidden(h)
             self.destLong.setHidden(h)
@@ -786,14 +867,20 @@ class Window(QtWidgets.QWidget):
         if self.serialPort.in_waiting > 0:
             return self.serialPort.readline().decode()
     # create tx msg
-    def createTx(self, data):
-        msg = 'COM ' + data
+    def createTx(self, data, option):
+        if option == 1:
+            msg = 'CMD BD ' + data
+        elif option == 2:
+            msg = 'CMD MAN1 ' + data
+        elif option == 3:
+            msg = 'CMD MAN2 ' + data
         self.commandBuf.put(msg)
     # command tx format
     def cmdTx(self):
         msg = self.commandBuf.get()
         msg = str(self.seqNum) + ' ' + str(self.ackNum) + ' ' + msg
         msg = 'AT+SEND=' + self.roverAddress.text() + ',' + str(len(msg)) + ',' + msg + '\r\n'
+        self.lastMsg = msg
         self.sent.setText(msg)
         self.sendCommand(msg)
     # msg tx format 
@@ -850,6 +937,7 @@ class Window(QtWidgets.QWidget):
             elif self.connectionState == 'ESTABLISHED':
                 data = self.parseMsg()
                 if data and data[2] == 'ACK':
+                    print(data)
                     print(data[0] + ' ' + str(self.ackNum))
                     if int(data[0]) != self.ackNum: 
                         self.sent.setText(self.lastMsg)
