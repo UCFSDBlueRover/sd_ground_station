@@ -624,7 +624,7 @@ class Window(QtWidgets.QWidget):
     def buttonPressed(self, button):
         if button == '1':
             if self.travelState == 1:
-                data = '[Lat:' + self.destLat.text() + '][Long:' + self.destLong.text() + ']'
+                data = self.destLat.text() + ' ' + self.destLong.text()
                 self.createTx(data, 1)
                 self.travelState = 0
                 self.sentFile.write('[' + datetime.now().strftime('%b %d %H:%M:%S') + ']  ' + 'Lat: ' + \
